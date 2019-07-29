@@ -1102,6 +1102,16 @@ export async function getAsync(
     ...target: string[]
 ) {
     if (INITIALISED) {
+        // TODO: consider storing keys directly
+        switch (get("storageloc")) {
+            case "local":
+                USERCONFIG = await browser.storage.local.get(CONFIGNAME)
+                break
+            case "sync":
+                USERCONFIG = await browser.storage.sync.get(CONFIGNAME)
+                break
+        }
+
         return get(target_typed, ...target)
     } else {
         return new Promise(resolve =>
@@ -1125,7 +1135,7 @@ export function setURL(pattern, ...args) {
 
     @hidden
  */
-export function set(...args) {
+export async function set(...args) {
     if (args.length < 2) {
         throw "You must provide at least two arguments!"
     }
@@ -1133,8 +1143,16 @@ export function set(...args) {
     const target = args.slice(0, args.length - 1)
     const value = args[args.length - 1]
 
-    setDeepProperty(USERCONFIG, value, target)
-    return save()
+    if (INITIALISED) {
+        // wait for storage to settle, otherwise we could clobber a previous incomplete set()
+        await getAsyncDynamic(...target)
+
+        setDeepProperty(USERCONFIG, value, target)
+
+        return save()
+    } else {
+        setDeepProperty(USERCONFIG, value, target)
+    }
 }
 
 /** @hidden
@@ -1350,6 +1368,7 @@ async function init() {
     schlepp(localConfig[CONFIGNAME])
 
     await update()
+    await save()
     INITIALISED = true
     for (const waiter of WAITERS) {
         waiter()
